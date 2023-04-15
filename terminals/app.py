@@ -1,49 +1,69 @@
 import datetime
 import struct
+from typing import List
 
-import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, Response
+from starlette.responses import StreamingResponse
 
+from terminals.config import settings
 from terminals.drivers import Terminals
+from terminals.models import SourceModel, InstrumentModel
+from terminals.storage import get_sources, insert_instruments, get_instruments, get_instrument
+from terminals.storage import insert_sources
 
 app = FastAPI()
 app.add_middleware(GZipMiddleware)
 
+terminals = Terminals()
+
 
 @app.on_event('startup')
 async def startup_event():
-    terminals = Terminals()
-    terminals.initialize()
+    insert_sources([dict(name=t.name, server=t.server) for t in settings.terminals])
+
+    id_mapping = {t.name: t.id for t in get_sources()}
+
+    terminals.initialize([t + {'id': id_mapping[t.name]} for t in settings.terminals])
+
+    for source_id, driver in terminals.terminals().items():
+        insert_instruments([i | {'source_id': source_id} for i in (await driver.instruments())])
 
 
-@app.post('/sources')
-async def sources() -> JSONResponse:
-    return JSONResponse(content=[{'id': 0}])
+@app.on_event("shutdown")
+async def shutdown_event():
+    await terminals.shutdown()
 
 
-@app.post('/instruments')
-async def instruments(source_id: int) -> JSONResponse:
-    return JSONResponse(content=[{}])
+@app.get('/sources', response_model=List[SourceModel])
+async def sources():
+    return get_sources()
 
 
-@app.post('/instrument')
-async def instrument(instrument_id: int, instrument_type: str, date: datetime.datetime) -> Response:
-    source_id = 0  # Нужно получить источник по инструменту. Это можно по базе сделать.
-    result = await Terminals.get()[instrument_id].instrument_data(instrument_id, instrument_type, date)
-    # Пакуем все в бинарный поток.
+@app.get('/instruments/{source_id}', response_model=List[InstrumentModel])
+async def instruments(source_id: int):
+    return get_instruments(source_id)
+
+
+@app.get('/data/{instrument_id}')
+async def instrument(instrument_id: int, instrument_type: str, start_time: datetime.datetime,
+                     end_time: datetime.datetime) -> Response:
+    instrument = get_instrument(instrument_id)
+    source_id = instrument.source_id
+    result = await terminals.get(source_id).instrument_data(instrument.name, instrument_type, start_time, end_time)
+
     if instrument_type == 'tick':
-        pack_string = '<QffffB'
-        pack_size = struct.calcsize(pack_string)
-        number_of_rows = len(result)
-        buffer = bytearray(pack_size * number_of_rows)
-        for index, row in enumerate(result):
-            struct.pack_into(pack_string, buffer, index * pack_size, *row)
-        return Response(content=buffer, media_type='application/octet-stream')
+        pack_string = '<Qffif'
+        # pack_string = '<QffiB'
+    else:
+        pack_string = '<QffffiiB'
 
-    # Здесь нужно добавить аналогично для рейтов, а не тиков.
-    return Response(content=[])
+    def stream():
+        for index, row in enumerate(result):
+            yield struct.pack(pack_string, *row)
+
+    return StreamingResponse(stream())
 
 
 @app.post('/chunks')
@@ -52,10 +72,9 @@ async def chunks(instrument_id: int, instrument_type: str, start_time: datetime.
     return JSONResponse(content=[])
 
 
-@app.post('/source_state')
+@app.get('/source_state')
 async def source_state(source_id: int) -> JSONResponse:
     return JSONResponse(content=[])
 
-
-if __name__ == '__main__':
-    uvicorn.run("app:app", host='0.0.0.0', port=8888, reload=True)
+# if __name__ == '__main__':
+#     uvicorn.run("app:app", host='0.0.0.0', port=8888, reload=True)

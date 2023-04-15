@@ -11,8 +11,8 @@ class MetaTrader5Driver(Driver):
         super().__init__()
         self.__configuration = configuration
         self.__lock = asyncio.Lock()
-        self.__out_pipe, self.__in_pipe = Pipe(duplex=True)
-        self.__process = Process(target=TerminalInstance.process, args=(configuration, self.__out_pipe, self.__in_pipe))
+        self.__parent_pipe, self.__child_pipe = Pipe(duplex=True)
+        self.__process = Process(target=TerminalInstance.process, args=(configuration, self.__child_pipe))
         self.__process.start()
 
     def __del__(self):
@@ -21,24 +21,36 @@ class MetaTrader5Driver(Driver):
     def restart(self):
         if self.__process is not None:
             self.__process.terminate()
-        self.__out_pipe, self.__in_pipe = Pipe(duplex=True)
+        self.__parent_pipe, self.__child_pipe = Pipe(duplex=True)
         self.__process = Process(target=TerminalInstance.process,
-                                 args=(self.__configuration, self.__out_pipe, self.__in_pipe))
+                                 args=(self.__configuration, self.__child_pipe))
         self.__process.start()
 
     async def __request(self, message: Dict[str, Any]) -> Any:
         async with self.__lock:
-            self.__out_pipe.send(message)
-            is_data_available = self.__in_pipe.poll(timeout=self.__configuration['ping_timeout'])
+            self.__parent_pipe.send(message)
+            is_data_available = self.__parent_pipe.poll(timeout=self.__configuration['ping_timeout'])
             if is_data_available:
-                return self.__in_pipe.recv()
+                return self.__parent_pipe.recv()
             return None
 
     async def terminal_info(self) -> Optional[Dict[str, Any]]:
-        return await self.__request({'cmd': 'get_terminal_info', })
+        return await self.__request({'cmd': 'get_terminal_info'})
 
     async def instruments(self):
-        pass
+        return await self.__request({'cmd': 'get_instruments_info'})
 
-    async def instrument_data(self):
-        pass
+    async def instrument_data(self, instrument, instrument_type, start_time, end_time):
+        return await self.__request({
+            'cmd': 'get_instrument_data',
+            'parameters': {
+                'instrument': instrument,
+                'instrument_type': instrument_type,
+                'start': start_time,
+                'end': end_time
+            }
+        })
+
+    async def shutdown(self):
+        await self.__request({'cmd': 'terminate'})
+        self.__del__()

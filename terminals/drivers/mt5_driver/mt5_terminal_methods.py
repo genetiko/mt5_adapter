@@ -40,7 +40,9 @@ class TerminalInstance:
 
     @staticmethod
     def __initialize(configuration: Dict[str, Any]):
-        MetaTrader5.initialize(configuration['server'], configuration['login'], configuration['password'])
+        MetaTrader5.initialize(server=configuration['server'],
+                               login=configuration['login'],
+                               password=configuration['password'])
 
     @staticmethod
     def __shutdown():
@@ -66,20 +68,29 @@ class TerminalInstance:
             'currency_base': symbol.currency_base,
             'currency_profit': symbol.currency_profit,
             'currency_margin': symbol.currency_margin,
-        } for symbol in map(MetaTrader5.symbol_info, symbols)]
+            'description': symbol.description,
+            'digits': symbol.digits,
+            'volume_min': symbol.volume_min,
+            'volume_max': symbol.volume_max,
+            'volume_step': symbol.volume_step,
+            'spread_floating': symbol.spread_float
+        } for symbol in symbols]
 
     @staticmethod
     def __get_instrument_data(instrument: str, instrument_type: str, start: datetime, end: datetime) -> List:
         if instrument_type == 'tick':
             ticks = MetaTrader5.copy_ticks_range(instrument, start, end, MetaTrader5.COPY_TICKS_ALL)
             return [
-                [tick.time_msc, tick.bid, tick.ask, tick.last, tick.volume_real,
-                 TerminalInstance.__map_flags(tick.flags)] for tick in ticks
+                # timestamp bid ask volume flags
+                [tick[0], tick[1], tick[2], tick[6],
+                 tick[7]] for tick in ticks
+                # TerminalInstance.__map_flags(tick[7])] for tick in ticks
             ]
 
-        rates = MetaTrader5.copy_rates_range(instrument, TerminalInstance.__PERIOD_MAPPING[instrument], start, end)
+        rates = MetaTrader5.copy_rates_range(instrument, TerminalInstance.__PERIOD_MAPPING[instrument_type], start, end)
         return [
-            [rate.time, rate.open, rate.high, rate.low, rate.close, rate.tick_volume, rate.spread] for rate in rates
+            # timestamp open high low close tick_volume volume spread
+            [rate[0], rate[1], rate[2], rate[3], rate[4], rate[5], rate[6], rate[7]] for rate in rates
         ]
 
     @staticmethod
@@ -93,25 +104,25 @@ class TerminalInstance:
         TerminalInstance.__shutdown()
 
     @staticmethod
-    def process(configuration: Dict[str, Any], in_pipe: Connection, out_pipe: Connection):
+    def process(configuration: Dict[str, Any], pipe: Connection):
         TerminalInstance.__initialize(configuration)
 
         while True:
-            message = in_pipe.recv()
+            message = pipe.recv()
 
             # Terminate.
             if message['cmd'] == 'terminate':
                 break
             # Fetch terminal info.
             elif message['cmd'] == 'get_terminal_info':
-                out_pipe.send(TerminalInstance.__get_terminal_info())
+                pipe.send(TerminalInstance.__get_terminal_info())
             # Fetch instruments info.
             elif message['cmd'] == 'get_instruments_info':
-                out_pipe.send(TerminalInstance.__get_instruments())
+                pipe.send(TerminalInstance.__get_instruments())
             # Fetch instrument history data.
             elif message['cmd'] == 'get_instrument_data':
                 parameters = message['parameters']
-                out_pipe.send(TerminalInstance.__get_instrument_data(
+                pipe.send(TerminalInstance.__get_instrument_data(
                     parameters['instrument'],
                     parameters['instrument_type'],
                     parameters['start'],

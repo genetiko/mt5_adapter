@@ -1,0 +1,14 @@
+terminals:
+  - name: "fxclub"
+    server: "ForexClubBY-MT5 Demo Server"
+    login: 520000699
+    password: iokrkp8q
+    ping_timeout: 30
+db:
+  user: "postgres"
+  password: "postgres"
+  host: "localhost"
+  port: 5432
+  name: "bot-db"
+  driver: "@format postgresql+psycopg2://{this.db.user}:{this.db.password}@{this.db.host}:{this.db.port}/{this.db.name}"
+  schema: terminals
