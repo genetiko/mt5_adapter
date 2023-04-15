@@ -2,6 +2,7 @@ import datetime
 import struct
 from typing import List
 
+import pandas as pd
 from fastapi import FastAPI
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse, Response
@@ -66,10 +67,11 @@ async def instrument(instrument_id: int, instrument_type: str, start_time: datet
     return StreamingResponse(stream())
 
 
-@app.post('/chunks')
-async def chunks(instrument_id: int, instrument_type: str, start_time: datetime.datetime,
-                 end_time: datetime.datetime) -> JSONResponse:
-    return JSONResponse(content=[])
+@app.get('/chunks')
+async def chunks(instrument_type: str, start_time: datetime.datetime, end_time: datetime.datetime):
+    ranges = pd.Series(pd.date_range(start_time, end_time, freq="H"))
+    pairs = list(zip(ranges[0::1], ranges[1::1]))
+    return pairs
 
 
 @app.get('/source_state')
