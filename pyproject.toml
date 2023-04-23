@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "terminalr"
+name = "terminals"
 version = "0.0.1"
 description = "Web adapter for the MT5 trading terminal."
 authors = ["Your Name <you@example.com>"]
@@ -9,14 +9,15 @@ packages = [{include = "terminals"}]
 
 [tool.poetry.dependencies]
 python = "^3.8"
-fastapi = "^0.95.0"
+fastapi = "^0.95.1"
 metatrader5 = "^5.0.44"
-loguru = "^0.6.0"
+loguru = "^0.7.0"
 pydantic = "^1.10.7"
 dynaconf = "^3.1.12"
-alembic = "^1.10.2"
-psycopg2 = "^2.9.5"
+alembic = "^1.10.3"
+psycopg2 = "^2.9.6"
 uvicorn = "^0.21.1"
+pandas = "^1.5.3"
 
 
 [build-system]
