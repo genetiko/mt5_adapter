@@ -68,8 +68,9 @@ async def instrument(instrument_id: int, instrument_type: str, start_time: datet
 
 
 @app.get('/chunks')
-async def chunks(instrument_type: str, start_time: datetime.datetime, end_time: datetime.datetime):
-    ranges = pd.Series(pd.date_range(start_time, end_time, freq="H"))
+async def chunks(instrument_type: str, start_time: datetime.datetime, end_time: datetime.datetime,
+                 frequency: str = "H"):
+    ranges = pd.Series(pd.date_range(start_time, end_time, freq=frequency))
     pairs = list(zip(ranges[0::1], ranges[1::1]))
     return pairs
 
